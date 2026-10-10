@@ -1,0 +1,11 @@
+{
+  "repo": "n8n-workflow-email-automation",
+  "scope": "Outreach and reply handling. Starts from the clean lead list; does not source or enrich leads.",
+  "readsFrom": "Google Sheet YOUR_SHEET_ID — the handoff sheet written by the lead-generation pipeline",
+  "owns": {
+    "Email automation": "01-email-automation.json",
+    "Outreach-cheap-done": "02-outreach-followup.json",
+    "Notification Automation": "03-notification-automation.json",
+    "Vapi Workflow": "04-vapi-voice-handoff.json"
+  }
+}

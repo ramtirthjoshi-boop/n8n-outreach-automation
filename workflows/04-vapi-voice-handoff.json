@@ -1,0 +1,252 @@
+{
+  "id": "N8N_ID_14",
+  "name": "Vapi Workflow",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "40537f82-24e6-4f3c-9646-32a55242c8b3",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "67ede38a-6a11-480d-b7b7-80610e04b6bc",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "N8N_ID_15",
+          "mode": "list",
+          "cachedResultName": "counting",
+          "cachedResultUrl": "/projects/N8N_ID_04/datatables/N8N_ID_15"
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "ac341e25-79d3-4159-b931-b02c4c8c80e1",
+      "name": "Get row(s)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all incoming items\nconst items = $input.all();\n\nif (!items.length) {\n  return [];\n}\n\n// Find the latest item by createdAt\nlet latest = items[0];\n\nfor (const item of items) {\n  const currentDate = new Date(item.json.createdAt);\n  const latestDate = new Date(latest.json.createdAt);\n\n  if (currentDate > latestDate) {\n    latest = item;\n  }\n}\n\n// Output ONLY the count\nreturn [\n  {\n    json: {\n      count: latest.json.count\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "7239c549-18d4-445d-ba57-12a01977237b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=={{ JSON.stringify({\n  results: [\n    {\n      toolCallId: \"call_test_123\",\n      result: \"Test successful\"\n    }\n  ]\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        624,
+        0
+      ],
+      "id": "3ada3495-a247-4a6d-80b4-4780c14ec2f6",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "N8N_ID_15",
+          "mode": "list",
+          "cachedResultName": "counting",
+          "cachedResultUrl": "/projects/N8N_ID_04/datatables/N8N_ID_15"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "count": "={{ $('Code in JavaScript').item.json.count +1 }}"
+          },
+          "matchingColumns": [
+            "count"
+          ],
+          "schema": [
+            {
+              "id": "count",
+              "displayName": "count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        832,
+        0
+      ],
+      "id": "9cdecdf0-7f70-43a4-8132-e5338b7cbe27",
+      "name": "Insert row"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9568814f-4529-4744-bfdf-4c8f8fbc90c8",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "4d086bfe-72f0-434a-9997-b3b1b081ccfd",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "value": "N8N_ID_15",
+          "mode": "list",
+          "cachedResultName": "counting",
+          "cachedResultUrl": "/projects/N8N_ID_04/datatables/N8N_ID_15"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "count",
+              "condition": "neq",
+              "keyValue": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1248,
+        96
+      ],
+      "id": "cd8a03f0-99ca-4415-ae05-85b99700c4fa",
+      "name": "Delete row(s)"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Insert row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert row": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Delete row(s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

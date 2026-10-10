@@ -1,0 +1,5066 @@
+{
+  "id": "N8N_ID_13",
+  "name": "Email automation",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "errorWorkflow": "N8N_ID_02"
+  },
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        0
+      ],
+      "id": "acdfbda5-f349-420c-96ad-f3f167e48bd0",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "LEADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 169877852,
+          "mode": "list",
+          "cachedResultName": "leads-hunter",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=169877852"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -336,
+        0
+      ],
+      "id": "d309f548-ff17-4cad-9690-f226196aa81c",
+      "name": "Get row(s) in sheet RAW",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d0921493-25cf-42ce-a409-acf6e97da5f2",
+              "leftValue": "={{ $json['Website URL'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -128,
+        0
+      ],
+      "id": "76fd68af-6295-4a96-a393-85018e6a7603",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  // Raw from sheet\n  let raw = String(item.json['Website URL'] || '');\n\n  // Sanitize invisible garbage that breaks parsing\n  raw = raw\n    .replace(/\\u00A0/g, ' ')   // nbsp\n    .replace(/\\u200B/g, '')    // zero-width space\n    .replace(/\\u200C/g, '')    // zero-width non-joiner\n    .replace(/\\u200D/g, '')    // zero-width joiner\n    .replace(/\\uFEFF/g, '')    // BOM\n    .trim();\n\n  // Take first URL-ish token if the cell contains extra stuff\n  const tokenMatch = raw.match(/https?:\\/\\/[^\\s]+|[a-z0-9.-]+\\.[a-z]{2,}(\\/[^\\s]*)?/i);\n  const token = (tokenMatch ? tokenMatch[0] : raw).trim();\n\n  // Extract hostname without trusting URL()\n  let host = '';\n  const m1 = token.match(/^https?:\\/\\/([^\\/?#\\s]+)/i);\n  if (m1 && m1[1]) {\n    host = m1[1];\n  } else {\n    // If no scheme, grab leading domain\n    const m2 = token.match(/^([a-z0-9.-]+\\.[a-z]{2,})(?:[\\/?#]|$)/i);\n    if (m2 && m2[1]) host = m2[1];\n  }\n\n  // Normalize\n  const website_domain = host.replace(/^www\\./i, '').toLowerCase();\n\n  // Canonical clean website root\n  const website_clean = website_domain ? `https://${website_domain}/` : '';\n\n  return {\n    json: {\n      row_number: item.json.row_number,\n      website_clean,\n      website_domain\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        -272
+      ],
+      "id": "fa3d5270-39b6-49a5-a69b-d16f4f789206",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.website_clean }}sitemap.xml",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        272,
+        -272
+      ],
+      "id": "9047ca17-6826-4f18-9712-02e350e3d5bc",
+      "name": "HTTP Request PRIMARY",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node\n\nconst body = $json.data || '';\nconst sizeBytes = Buffer.byteLength(body, 'utf8');\n\n// hard size cutoff: 1.5 MB\nconst MAX_SIZE = 1.5 * 1024 * 1024;\n\n// normalize\nconst text = body.slice(0, 5000).toLowerCase();\n\n// garbage checks\nconst looksLikeHtml =\n  text.includes('<!doctype html') ||\n  text.includes('<html') ||\n  text.includes('<head') ||\n  text.includes('<body');\n\nif (sizeBytes > MAX_SIZE || looksLikeHtml) {\n  return [{ status: 2 }];\n}\n\n// sitemap checks\nconst looksLikeSitemap =\n  text.includes('<?xml') &&\n  (text.includes('<sitemapindex') ||\n   text.includes('<urlset') ||\n   text.includes('<url><loc>'));\n\nif (looksLikeSitemap) {\n  return [{ status: 1 }];\n}\n\n// default: treat as garbage\nreturn [{ status: 2 }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        -272
+      ],
+      "id": "8821acf0-b87e-4929-b0d6-3debabc96813",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0673ca73-5a70-45a3-aa16-0a87058bcd3c",
+              "leftValue": "={{ $json. status }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        -272
+      ],
+      "id": "ce7428bf-320a-40f1-9f9b-a98834e29c40",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $('HTTP Request').first().json.data ?? '';\nconst xml = String(raw);\n\n// Pull all <loc> links\nconst locs = [...xml.matchAll(/<loc>([^<]+)<\\/loc>/g)].map(m => m[1].trim());\n\n// Build the sitemap blob (links + separator + flattened XML)\nconst sitemap_blob = [\n  locs.join(', '),\n  '---',\n  xml.replace(/\\s+/g, ' ').trim()\n].join('\\n');\n\n// Prompt template (NORMAL newlines for now)\nconst prompt =\n  \"You are a technical research analyst processing XML sitemap data for a business website.\\n\" +\n  \"You are given the raw response body retrieved from requesting /sitemap.xml.\\n\" +\n  \"Use ONLY the provided sitemap data.\\n\" +\n  \"Do NOT use prior knowledge, assumptions, or external information.\\n\" +\n  \"If required information cannot be determined from the sitemap data, return null.\\n\\n\" +\n  \"Business Website data: \" + sitemap_blob + \"\\n\\n\" +\n  \"Instructions:\\n\" +\n  \"Analyze the provided sitemap response.\\n\" +\n  \"First, determine whether the response represents:\\n\" +\n  \"- a sitemap index (containing links to other sitemaps),\\n\" +\n  \"- a page-level sitemap (containing page URLs),\\n\" +\n  \"- or a non-sitemap response (HTML page, blocked response, or invalid content).\\n\\n\" +\n  \"Decision Rules:\\n\" +\n  \"1) If the response is a sitemap index:\\n\" +\n  \"   - Select ONE best page-level sitemap URL (prefer page-sitemap.xml or similar; avoid post/category/tag if possible).\\n\" +\n  \"   - Output MUST be this exact JSON shape (all keys required):\\n\" +\n  \"     {\\\"sitemap_index\\\":\\\"<page sitemap url>\\\",\\\"mode\\\":2,\\\"url_1\\\":null,\\\"url_2\\\":null,\\\"url_3\\\":null}\\n\\n\" +\n  \"2) If the response is already a page-level sitemap:\\n\" +\n  \"   - Select EXACTLY three URLs from the provided URLs only:\\n\" +\n  \"     url_1 = homepage (root URL / canonical homepage)\\n\" +\n  \"     url_2 = primary offer/service page\\n\" +\n  \"     url_3 = trust/differentiation page (about/contact/faq/how-it-works/suppliers)\\n\" +\n  \"   - Output MUST be this exact JSON shape (all keys required):\\n\" +\n  \"     {\\\"sitemap_index\\\":null,\\\"mode\\\":1,\\\"url_1\\\":\\\"<url>\\\",\\\"url_2\\\":\\\"<url>\\\",\\\"url_3\\\":\\\"<url>\\\"}\\n\\n\" +\n  \"3) If invalid/non-sitemap:\\n\" +\n  \"   - Output MUST be this exact JSON shape (all keys required):\\n\" +\n  \"     {\\\"sitemap_index\\\":null,\\\"mode\\\":0,\\\"url_1\\\":null,\\\"url_2\\\":null,\\\"url_3\\\":null}\\n\\n\" +\n  \"Output Requirements (STRICT):\\n\" +\n  \"- Output MUST be valid JSON.\\n\" +\n  \"- Output MUST be ONE JSON object ONLY.\\n\" +\n  \"- Do NOT include markdown, code fences, or extra text.\\n\" +\n  \"- Do NOT include arrays.\\n\" +\n  \"- Use null exactly as shown.\\n\" +\n  \"- All keys MUST be present exactly: sitemap_index, mode, url_1, url_2, url_3\\n\";\n\n// Convert to escaped style for JSON-safe embedding:\n// - escape backslashes\n// - escape double quotes\n// - turn real newlines into literal \\\\n\nconst escapedPrompt = prompt\n  .replace(/\\\\/g, '\\\\\\\\')\n  .replace(/\"/g, '\\\\\"')\n  .replace(/\\r?\\n/g, '\\\\\\\\n');\n\nreturn [\n  {\n    json: {\n      prompt: escapedPrompt\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -432
+      ],
+      "id": "903bb032-908d-4158-9e14-aedeed6ec0bf",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0cb77db3-6a72-4c09-b131-eca4d5ef3a5f",
+              "name": "project_id",
+              "value": "your-gcp-project",
+              "type": "string"
+            },
+            {
+              "id": "2c373ec9-56ee-45a8-b282-d2c70b12472e",
+              "name": "client_email",
+              "value": "service-account@your-gcp-project.iam.gserviceaccount.com",
+              "type": "string"
+            },
+            {
+              "id": "fd454f11-86b2-4db6-88b6-645763e66598",
+              "name": "location_id",
+              "value": "global",
+              "type": "string"
+            },
+            {
+              "id": "6c354c24-79fa-4227-a309-99b374d929d1",
+              "name": "api_endpoint",
+              "value": "global-aiplatform.googleapis.com",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1088,
+        -432
+      ],
+      "id": "bd11f9c2-8b63-472b-b08d-e476f8fa9dc0",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "useJson": true,
+        "claimsJson": "={\n  \"iss\": \"{{ $json.client_email }}\",\n  \"scope\": \"https://www.googleapis.com/auth/cloud-platform\",\n  \"aud\": \"https://oauth2.googleapis.com/token\",\n  \"exp\": {{ Math.floor(Date.now()/1000) + 3600 }},\n  \"iat\": {{ Math.floor(Date.now()/1000) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.jwt",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        -432
+      ],
+      "id": "6eafc9b4-ee2b-49c8-b76d-656e502d6bfe",
+      "name": "JWT"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://oauth2.googleapis.com/token",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "urn:ietf:params:oauth:grant-type:jwt-bearer"
+            },
+            {
+              "name": "assertion",
+              "value": "={{ $json.token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1440,
+        -432
+      ],
+      "id": "4d2952dc-6091-4425-9d73-af6fc13941d2",
+      "name": "HTTP Request1",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// When the sitemap fetch was blocked by a WAF, \"HTTP Request\" synthesises a\n// one-entry urlset for the homepage. Gemini is not asked to classify that one -\n// the answer is already known, and a coin-flip classification would send a\n// reachable lead down the mode 0 write-off branch.\nlet sitemapSource = '';\nlet homeUrl = '';\ntry { sitemapSource = String($('HTTP Request').first().json.sitemap_source || ''); } catch (e) { sitemapSource = ''; }\ntry { homeUrl = String($('Code in JavaScript').first().json.website_clean || '').trim(); } catch (e) { homeUrl = ''; }\nif (sitemapSource === 'synthetic-home' && homeUrl) {\n  return [{ json: { sitemap_index: null, mode: 1, url_1: homeUrl, url_2: null, url_3: null } }];\n}\n\n// Combine chunked Gemini outputs into a single JSON string, then parse.\n// Outputs: sitemap_index, mode, url_1, url_2, url_3\n\nconst items = $input.all();\n\n// 1) Stitch together all candidate text parts from all items\nlet text = '';\nfor (const it of items) {\n  const parts = it.json?.candidates?.[0]?.content?.parts ?? [];\n  for (const p of parts) {\n    if (typeof p.text === 'string') text += p.text;\n  }\n}\n\ntext = text.trim();\n\n// 2) Remove code fences if Gemini ever adds them\ntext = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();\n\n// 3) Extract JSON object safely (first {...} block)\nconst m = text.match(/\\{[\\s\\S]*\\}/);\nif (!m) {\n  return [{\n    json: {\n      sitemap_index: null,\n      mode: null,\n      url_1: null,\n      url_2: null,\n      url_3: null,\n      _raw: text\n    }\n  }];\n}\n\nlet jsonStr = m[0].trim();\n\n// 4) Parse\nlet obj;\ntry {\n  obj = JSON.parse(jsonStr);\n} catch (e) {\n  // try minor repair: remove trailing commas\n  jsonStr = jsonStr.replace(/,\\s*([}\\]])/g, '$1');\n  obj = JSON.parse(jsonStr);\n}\n\n// 5) Clean variables (exact names you want)\nconst sitemap_index = typeof obj.sitemap_index === 'string' ? obj.sitemap_index : null;\nconst mode = typeof obj.mode === 'number' ? obj.mode : null;\nconst url_1 = typeof obj.url_1 === 'string' ? obj.url_1 : null;\nconst url_2 = typeof obj.url_2 === 'string' ? obj.url_2 : null;\nconst url_3 = typeof obj.url_3 === 'string' ? obj.url_3 : null;\n\nreturn [{\n  json: { sitemap_index, mode, url_1, url_2, url_3 }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        -432
+      ],
+      "id": "dbd0e06a-e3c3-46be-a556-2538a76dcf00",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "id": "22a9310e-4566-470f-bde4-6b781d35947c"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "cbfd6585-a81a-4fd1-b542-8e0cb07de572",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "d183d7b1-16ce-4eba-b21d-93282d27d151",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1984,
+        -448
+      ],
+      "id": "f33ef04c-0be8-40a0-954a-5935d14d4346",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.sitemap_index }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2256,
+        -192
+      ],
+      "id": "624fa2aa-ebf8-4d05-b601-0edb47b05154",
+      "name": "HTTP Request3",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://aiplatform.googleapis.com/v1/projects/{{ $(\"Edit Fields\").item.json.project_id }}/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        { \"text\": \"{{ $(\"Code in JavaScript2\").item.json.prompt }}\" }\n      ]\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1632,
+        -432
+      ],
+      "id": "97657246-9bf6-44f8-8211-c8fd788d495b",
+      "name": "Sitemap",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $('HTTP Request3').first().json.data ?? '';\nconst xml = String(raw);\n\n// Pull all <loc> links\nconst locs = [...xml.matchAll(/<loc>([^<]+)<\\/loc>/g)].map(m => m[1].trim());\n\n// Build the sitemap blob (links + separator + flattened XML)\nconst sitemap_blob = [\n  locs.join(', '),\n  '---',\n  xml.replace(/\\s+/g, ' ').trim()\n].join('\\n');\n\n// Prompt template (NORMAL newlines for now)\nconst prompt =\n  \"You are a technical research analyst processing XML sitemap data for a business website.\\n\" +\n  \"You are given the raw response body retrieved from requesting /sitemap.xml.\\n\" +\n  \"Use ONLY the provided sitemap data.\\n\" +\n  \"Do NOT use prior knowledge, assumptions, or external information.\\n\" +\n  \"If required information cannot be determined from the sitemap data, return null.\\n\\n\" +\n  \"Business Website data: \" + sitemap_blob + \"\\n\\n\" +\n  \"Instructions:\\n\" +\n  \"Analyze the provided sitemap response.\\n\" +\n  \"First, determine whether the response represents:\\n\" +\n  \"- a sitemap index (containing links to other sitemaps),\\n\" +\n  \"- a page-level sitemap (containing page URLs),\\n\" +\n  \"- or a non-sitemap response (HTML page, blocked response, or invalid content).\\n\\n\" +\n  \"Decision Rules:\\n\" +\n  \"1) If the response is a sitemap index:\\n\" +\n  \"   - Select ONE best page-level sitemap URL (prefer page-sitemap.xml or similar; avoid post/category/tag if possible).\\n\" +\n  \"   - Output MUST be this exact JSON shape (all keys required):\\n\" +\n  \"     {\\\"sitemap_index\\\":\\\"<page sitemap url>\\\",\\\"mode\\\":2,\\\"url_1\\\":null,\\\"url_2\\\":null,\\\"url_3\\\":null}\\n\\n\" +\n  \"2) If the response is already a page-level sitemap:\\n\" +\n  \"   - Select EXACTLY three URLs from the provided URLs only:\\n\" +\n  \"     url_1 = homepage (root URL / canonical homepage)\\n\" +\n  \"     url_2 = primary offer/service page\\n\" +\n  \"     url_3 = trust/differentiation page (about/contact/faq/how-it-works/suppliers)\\n\" +\n  \"   - Output MUST be this exact JSON shape (all keys required):\\n\" +\n  \"     {\\\"sitemap_index\\\":null,\\\"mode\\\":1,\\\"url_1\\\":\\\"<url>\\\",\\\"url_2\\\":\\\"<url>\\\",\\\"url_3\\\":\\\"<url>\\\"}\\n\\n\" +\n  \"3) If invalid/non-sitemap:\\n\" +\n  \"   - Output MUST be this exact JSON shape (all keys required):\\n\" +\n  \"     {\\\"sitemap_index\\\":null,\\\"mode\\\":0,\\\"url_1\\\":null,\\\"url_2\\\":null,\\\"url_3\\\":null}\\n\\n\" +\n  \"Output Requirements (STRICT):\\n\" +\n  \"- Output MUST be valid JSON.\\n\" +\n  \"- Output MUST be ONE JSON object ONLY.\\n\" +\n  \"- Do NOT include markdown, code fences, or extra text.\\n\" +\n  \"- Do NOT include arrays.\\n\" +\n  \"- Use null exactly as shown.\\n\" +\n  \"- All keys MUST be present exactly: sitemap_index, mode, url_1, url_2, url_3\\n\";\n\n// Convert to escaped style for JSON-safe embedding:\n// - escape backslashes\n// - escape double quotes\n// - turn real newlines into literal \\\\n\nconst escapedPrompt = prompt\n  .replace(/\\\\/g, '\\\\\\\\')\n  .replace(/\"/g, '\\\\\"')\n  .replace(/\\r?\\n/g, '\\\\\\\\n');\n\nreturn [\n  {\n    json: {\n      prompt: escapedPrompt\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        -192
+      ],
+      "id": "1d3cef67-c433-46eb-8cf3-e350925faf42",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine chunked Gemini outputs into a single JSON string, then parse.\n// Outputs: sitemap_index, mode, url_1, url_2, url_3\n\nconst items = $input.all();\n\n// 1) Stitch together all candidate text parts from all items\nlet text = '';\nfor (const it of items) {\n  const parts = it.json?.candidates?.[0]?.content?.parts ?? [];\n  for (const p of parts) {\n    if (typeof p.text === 'string') text += p.text;\n  }\n}\n\ntext = text.trim();\n\n// 2) Remove code fences if Gemini ever adds them\ntext = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();\n\n// 3) Extract JSON object safely (first {...} block)\nconst m = text.match(/\\{[\\s\\S]*\\}/);\nif (!m) {\n  return [{\n    json: {\n      sitemap_index: null,\n      mode: null,\n      url_1: null,\n      url_2: null,\n      url_3: null,\n      _raw: text\n    }\n  }];\n}\n\nlet jsonStr = m[0].trim();\n\n// 4) Parse\nlet obj;\ntry {\n  obj = JSON.parse(jsonStr);\n} catch (e) {\n  // try minor repair: remove trailing commas\n  jsonStr = jsonStr.replace(/,\\s*([}\\]])/g, '$1');\n  obj = JSON.parse(jsonStr);\n}\n\n// 5) Clean variables (exact names you want)\nconst sitemap_index = typeof obj.sitemap_index === 'string' ? obj.sitemap_index : null;\nconst mode = typeof obj.mode === 'number' ? obj.mode : null;\nconst url_1 = typeof obj.url_1 === 'string' ? obj.url_1 : null;\nconst url_2 = typeof obj.url_2 === 'string' ? obj.url_2 : null;\nconst url_3 = typeof obj.url_3 === 'string' ? obj.url_3 : null;\n\nreturn [{\n  json: { sitemap_index, mode, url_1, url_2, url_3 }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        -192
+      ],
+      "id": "0c5d6c15-5415-4789-b51a-7b4ef6d585b3",
+      "name": "Code in JavaScript5"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://aiplatform.googleapis.com/v1/projects/{{ $(\"Edit Fields\").first().json.project_id }}/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('HTTP Request1').first().json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        { \"text\": \"{{ $json.prompt }}\" }\n      ]\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2672,
+        -192
+      ],
+      "id": "e690f2b0-344a-477c-81d0-9725f31807cc",
+      "name": "Sitemap1",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const shots = [];\nfor (const it of $input.all()) {\n  const r = it.json && Array.isArray(it.json.results) ? it.json.results[0] : null;\n  if (r && r.url && r.desktop && r.mobile) shots.push({ url: r.url, desktop: r.desktop, mobile: r.mobile });\n}\n// The vision prompt needs exactly 3 pages; pad with captured pages rather than\n// sending empty image URIs.\nconst results = shots.slice(0, 3);\nfor (let i = 0; results.length > 0 && results.length < 3; i++) results.push(shots[i % shots.length]);\nreturn [{ json: { results, shots_ok: shots.length > 0, shots_captured: shots.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3248,
+        -32
+      ],
+      "id": "d57a3d6b-db90-4a92-a1b9-9ea6ae19d070",
+      "name": "HTTP Request2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://aiplatform.googleapis.com/v1/projects/{{ $(\"Edit Fields\").first().json.project_id }}/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=\tBearer {{ $(\"HTTP Request1\").first().json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        { \"text\": \"You are reviewing THREE website pages. For EACH page, compare DESKTOP and MOBILE screenshots of the same URL.\\nIMPORTANT ANTI-HALLUCINATION RULE: Automated screenshot capture sometimes fires BEFORE scroll-triggered fade-in animations (AOS/GSAP/WOW.js style reveals) have finished, showing solid black, solid gray, or blank rectangular boxes where logos/images/content actually exist on the real live site. Do NOT report solid-color or blank boxes as broken images, broken logos, missing assets, or similar defects - this is a known screenshot-capture artifact, not a real website bug. Only report an image/logo/asset as broken if you see a visible broken-image icon, alt text showing where an image should be, a clearly malformed or corrupted image, or a 404-style placeholder. If unsure whether something is a capture artifact vs a real defect, do NOT include it as an issue at all - omit it rather than guess.\\nThe same applies to ANIMATED NUMBER COUNTERS and STATISTICS: CountUp.js / odometer-style counters start at zero and only count up once scrolled into view, so a capture taken before the animation fires shows 0, 0%, or 0+ instead of the real figure. Do NOT report counters, statistics, or metrics displaying 0, 0%, or 0+ as a bug, broken counter, placeholder, or misconfiguration. Likewise do NOT report empty or zero-width progress bars, blank carousel or slider slides, un-loaded lazy images, or content that appears cut off at the bottom edge of the capture - all are capture artifacts, not defects. Only report a numeric or statistical element as defective if it renders obviously corrupted text such as NaN, undefined, or null.\\nReturn JSON ONLY.\\nOutput MUST be ONE JSON object with this shape:\\n{\\n  \\\"pages\\\": [\\n    {\\n      \\\"url\\\": \\\"...\\\",\\n      \\\"verdict\\\": \\\"...\\\",\\n      \\\"issues\\\": [],\\n      \\\"quick_wins\\\": [],\\n      \\\"copy_notes\\\": [],\\n      \\\"ux_notes\\\": []\\n    }\\n  ]\\n}\\nRules:\\n- Be blunt, specific, actionable.\\n- Each array should contain short bullet strings.\\n- pages array MUST contain exactly 3 objects in the same order as the URLs below.\\n\\nURL 1: {{ $json.results[0].url }}\\nURL 2: {{ $json.results[1].url }}\\nURL 3: {{ $json.results[2].url }}\" },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[0].desktop }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[0].mobile }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[1].desktop }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[1].mobile }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[2].desktop }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[2].mobile }}\" } }\n      ]\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3296,
+        -192
+      ],
+      "id": "05e1e927-3611-4a45-b3aa-4c951fd8340d",
+      "name": "HTTP Request4",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Braav Labs Outreach Doctrine prompt builder\n// Shared verbatim by Code in JavaScript6 (sitemap-index path) and\n// Code in JavaScript8 (direct-sitemap path).\nconst rawText = $input.first().json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';\nlet s = String(rawText).trim();\n\n// 1. Clean up JSON fences\ns = s.replace(/```json/gi, '').replace(/```/g, '').trim();\n\n// 2. Extract the JSON block from the vision output. A parse failure must not throw:\n// a thrown error leaves the row unmarked and retries it forever.\nlet pages = [];\nconst m = s.match(/\\{[\\s\\S]*\\}/);\nif (m) {\n  try {\n    const parsed = JSON.parse(m[0].trim());\n    pages = Array.isArray(parsed.pages) ? parsed.pages : [];\n  } catch (e) {\n    pages = [];\n  }\n}\n\nconst cleanPages = pages.map(p => ({\n  url: p.url ?? null,\n  verdict: p.verdict ?? null,\n  issues: Array.isArray(p.issues) ? p.issues.slice(0, 5) : [],\n  quick_wins: Array.isArray(p.quick_wins) ? p.quick_wins.slice(0, 5) : []\n}));\n\nconst pagesJson = JSON.stringify(cleanPages);\n\n// 3. BRAAV LABS OUTREACH DOCTRINE PROMPT\nconst prompt =\n  \"You are the senior website-friction analyst and cold outreach copywriter for Braav Labs, an AI automation company working with dental, medical, and wellness clinics.\\n\" +\n  \"You are given website page issues from a screenshot review. Those issues are the ONLY allowed website problems. Do not invent anything that is not in VISION_PAGES_JSON.\\n\\n\" +\n  \"GOAL: Pick ONE specific, observable friction on ONE page, tied to ONE next step (booking, inquiry, contact, consultation). The clinic owner should read it and think 'that's a fair point', then 'sure, send it over'.\\n\\n\" +\n  \"HARD RULES:\\n\" +\n  \"- Never claim guaranteed revenue, conversion increases, or a measurable loss.\\n\" +\n  \"- Never claim access to analytics, traffic, or visitor data. No numbers, percentages, rates, or statistics of any kind.\\n\" +\n  \"- Never use marketing jargon: bounce rate, conversion, decision fatigue, choice overload, optimize, user experience, UX, funnel, revenue, ROI.\\n\" +\n  \"- Never pick an issue that could be a screenshot-capture artifact: counters or statistics showing 0, blank or black boxes, missing logos or images, empty sliders or carousels, content cut off at the bottom.\\n\" +\n  \"- Never pick a generic comment ('could be optimized', 'several issues', 'needs better AI'). The owner must be able to picture exactly where it is on the page.\\n\" +\n  \"- If no issue in VISION_PAGES_JSON is observable AND tied to a next step, do NOT make one up and do NOT use web search to find a substitute. Return website_problem as null.\\n\\n\" +\n  \"COMPANY:\\n\" +\n  \"- Domain: \" + $('Code in JavaScript1').first().json.website_domain + \"\\n\" +\n  \"- Company Name: \" + $('Get row(s) in sheet').first().json['Company Name'] + \"\\n\\n\" +\n  \"VISION_PAGES_JSON:\\n\" +\n  pagesJson +\n  \"\\n\\n\" +\n  \"FIELDS (plain language a clinic owner would say out loud):\\n\" +\n  \"- page: short page name (Home, About, Contact, Booking, Services...).\\n\" +\n  \"- website_problem: ONE sentence, max 25 words, ONE concrete observable issue on that page. No stacked issues.\\n\" +\n  \"- friction_summary: ONE sentence, max 20 words, naming that same friction and the one outcome the page is for. Example: 'making the booking button easy to find on mobile, so new patients can request a visit'.\\n\" +\n  \"- recognizable_reason: ONE sentence, max 30 words: one patient action + one hesitation trigger.\\n\" +\n  \"- recognizable_reason_short: the same reason, simpler, max 18 words.\\n\" +\n  \"- consequence_mechanics: ONE sentence, max 35 words, the cause-and-effect chain (patient arrives, next step feels unclear, they may leave without taking it). A plausible mechanism, never a claimed loss.\\n\" +\n  \"- consequence_short: the same chain, more direct, max 22 words.\\n\" +\n  \"- preview_asset_exists: true if a small before/after preview of this one fix is realistic, else false.\\n\" +\n  \"- review_time: integer minutes to look over that preview, 2 to 5.\\n\" +\n  \"- micro_yes: a short permission question about sending the free preview, max 8 words, e.g. 'Want me to send it over?'. Never offer to fix anything, never ask for a call or meeting, never mention price.\\n\" +\n  \"- subject_label: 3 to 4 words, plain business voice, names the same page/topic as website_problem, e.g. 'Homepage booking button'. No hype, no urgency, no punctuation, no ALL CAPS, no company name.\\n\\n\" +\n  \"OUTPUT REQUIREMENTS (STRICT):\\n\" +\n  \"- Output MUST be valid JSON only. No markdown. No code fences. No extra keys.\\n\" +\n  \"- Return exactly these keys: page, website_problem, friction_summary, recognizable_reason, recognizable_reason_short, consequence_mechanics, consequence_short, preview_asset_exists, review_time, micro_yes, subject_label\\n\";\n\n// 4. Escape for JSON embedding\nconst escapedPrompt = prompt\n  .replace(/\\\\/g, '\\\\\\\\')\n  .replace(/\"/g, '\\\\\"')\n  .replace(/\\r?\\n/g, '\\\\\\\\n');\n\nreturn [{ json: { prompt: escapedPrompt } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3504,
+        -192
+      ],
+      "id": "2c5e2714-8fce-4363-9749-97a94c486a30",
+      "name": "Code in JavaScript6"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://aiplatform.googleapis.com/v1/projects/{{ $(\"Edit Fields\").first().json.project_id }}/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('HTTP Request1').first().json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        { \"text\": \"{{ $json.prompt }}\" }\n      ]\n    }\n  ],\n  \"tools\": [\n    { \"googleSearch\": {} }\n  ],\n  \"generationConfig\": {\n    \"candidateCount\": 1,\n    \"temperature\": 0.2,\n    \"maxOutputTokens\": 2048,\n    \"thinkingConfig\": { \"thinkingLevel\": \"LOW\" }\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3744,
+        -192
+      ],
+      "id": "db44d2e6-c286-401a-ae73-b2429e436fdf",
+      "name": "HTTP Request5",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Final Variable Extractor + doctrine quality gate\n// Shared verbatim by Code in JavaScript7 and Code in JavaScript9.\n//\n// Follow-ups need tightened variants of the same variables, so each cell holds\n// \"full || short\". The outreach templates read part [0] or [1]. Rows that fail the\n// gate get Issues = \"Research failed\" and are never emailed.\nconst raw =\n  $input.first().json?.candidates?.[0]?.content?.parts?.[0]?.text ??\n  $input.first().json?.text ??\n  '';\n\nlet text = String(raw).trim().replace(/```json/gi, '').replace(/```/g, '').trim();\n\nlet obj = {};\nconst match = text.match(/\\{[\\s\\S]*\\}/);\nif (match) {\n  try {\n    obj = JSON.parse(match[0].trim());\n  } catch (e) {\n    try { obj = JSON.parse(match[0].trim().replace(/,\\s*([}\\]])/g, '$1')); } catch (e2) { obj = {}; }\n  }\n}\n\nconst clean = v => (typeof v === 'string' ? v.replace(/\\s*\\|\\|\\s*/g, ' ').replace(/\\s+/g, ' ').trim() : '');\nconst pack = (full, short) => (full ? full + ' || ' + (short || full) : '');\n\nconst page = clean(obj.page);\nconst problem = clean(obj.website_problem);\nconst summary = clean(obj.friction_summary).replace(/[.!]+$/, '');\nconst reason = clean(obj.recognizable_reason);\nconst reasonShort = clean(obj.recognizable_reason_short);\nconst cons = clean(obj.consequence_mechanics);\nconst consShort = clean(obj.consequence_short);\nlet micro = clean(obj.micro_yes);\nlet subject = clean(obj.subject_label).replace(/[!?.:;\"]/g, '').trim();\nlet reviewTime = Number.isFinite(obj.review_time) ? Math.round(obj.review_time) : 3;\nif (reviewTime < 2 || reviewTime > 5) reviewTime = 3;\n\n// micro yes must stay a permission question about sending the preview\nif (!micro || !/send/i.test(micro) || /\\b(fix|call|meeting|chat|book a|schedule|price|cost)\\b/i.test(micro) || micro.split(' ').length > 10) {\n  micro = 'Want me to send it over?';\n}\nif (!micro.endsWith('?')) micro += '?';\n\nconst problems = [];\nif (!page) problems.push('page');\nif (!problem) problems.push('website_problem');\nif (!reason) problems.push('recognizable_reason');\nif (!cons) problems.push('consequence_mechanics');\nif (!summary) problems.push('friction_summary');\nconst words = subject.split(' ').filter(Boolean).length;\nif (words < 2 || words > 5) problems.push('subject_label');\n\nconst body = [problem, summary, reason, reasonShort, cons, consShort, subject].join(' ');\nconst banned = /\\d+\\s*%|\\b\\d+\\+|bounce|conversion|revenue|\\broi\\b|decision fatigue|choice overload|analytics|guarantee|funnel|optimi[sz]/i;\nif (banned.test(body)) problems.push('banned claim or metric');\nconst artifact = /counter|statistic|\\b0\\b|black|blank|placeholder|empty (media )?(box|player|space|area|section|profile|frame|slot)|broken (logo|image|photo|icon|video)|missing (a |an |the )?(logo|image|photo|headshot|picture|icon|video|thumbnail|portrait)|(no|without) (a |any )?(photo|headshot|picture|image|thumbnail|portrait)|carousel|slider|lazy|(not|fail\\w*( to)?) load|cut off/i;\nif (artifact.test(problem + ' ' + summary)) problems.push('possible screenshot artifact');\n\n// A blocked or erroring page render is our own request being refused, not a defect\n// the clinic can reproduce. Verified 2026-09-30: torontobeachdental.com returned a\n// 403 to our server while serving HTTP 200 to an independent fetch, and the run\n// wrote that block up as the clinic's website problem. Never ship it as a finding.\nconst blocked = /\\bforbidden\\b|\\baccess denied\\b|\\bcloudflare\\b|just a moment|checking your browser|attention required|site can'?t be reached|\\b(40\\d|5\\d{2})\\s*(error|forbidden|page|response|status)\\b|\\b(error|status)\\s*(code\\s*)?(40\\d|5\\d{2})\\b/i;\nconst unreachable = /(site|website|homepage|web ?page|domain)\\s+(is\\s+)?(currently\\s+)?(down|offline|unavailable|inaccessible|unreachable|not\\s+(available|accessible|loading|working|reachable|functioning))/i;\nif (blocked.test(body) || unreachable.test(body)) problems.push('blocked or error page, not reproducible');\n\nconst ok = problems.length === 0;\n\nreturn [{\n  json: {\n    page,\n    website_problem: pack(problem, summary),\n    recognizable_reason: pack(reason, reasonShort),\n    consequence_mechanics: pack(cons, consShort),\n    preview_asset_exists: typeof obj.preview_asset_exists === 'boolean' ? obj.preview_asset_exists : null,\n    review_time: reviewTime,\n    micro_yes: micro,\n    subject_label: subject,\n    research_ok: ok,\n    issues: ok ? '' : 'Research failed: ' + problems.join(', '),\n    sources: $input.first().json?.groundingMetadata?.webSearchQueries ?? []\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3968,
+        -192
+      ],
+      "id": "0e2e4366-f8b2-4586-b346-aa9a8c5399e9",
+      "name": "Code in JavaScript7"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "LEADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 169877852,
+          "mode": "list",
+          "cachedResultName": "leads-hunter",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=169877852"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Get row(s) in sheet').first().json.row_number }}",
+            "page": "={{ $json.page }}",
+            "website_problem": "={{ $json.website_problem }}",
+            "recognisable_reason": "={{ $json.recognizable_reason }}",
+            "consequence_mechanics": "={{ $json.consequence_mechanics }}",
+            "preview_assets_exist": "={{ $json.preview_asset_exists }}",
+            "review_time": "={{ $json.review_time }}",
+            "micro_yes": "={{ $json.micro_yes }}",
+            "subject_line": "={{ $json.subject_label }}",
+            "Done_Researched": "true",
+            "Issues": "={{ $json.issues }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website URL",
+              "displayName": "Website URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domain",
+              "displayName": "Domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Brief Description",
+              "displayName": "Brief Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Organization",
+              "displayName": "Organization",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Headcount",
+              "displayName": "Headcount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State",
+              "displayName": "State",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Postal code",
+              "displayName": "Postal code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Street",
+              "displayName": "Street",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence score",
+              "displayName": "Confidence score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Number of sources",
+              "displayName": "Number of sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pattern",
+              "displayName": "Pattern",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First name",
+              "displayName": "First name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last name",
+              "displayName": "Last name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position raw",
+              "displayName": "Position raw",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Twitter handle",
+              "displayName": "Twitter handle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company type",
+              "displayName": "Company type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Industry",
+              "displayName": "Industry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "page",
+              "displayName": "page",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website_problem",
+              "displayName": "website_problem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recognisable_reason",
+              "displayName": "recognisable_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "consequence_mechanics",
+              "displayName": "consequence_mechanics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "preview_assets_exist",
+              "displayName": "preview_assets_exist",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "review_time",
+              "displayName": "review_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "micro_yes",
+              "displayName": "micro_yes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject_line",
+              "displayName": "subject_line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pitch",
+              "displayName": "pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 1",
+              "displayName": "Follow-up 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 2",
+              "displayName": "Follow-up 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 3",
+              "displayName": "Follow-up 3",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Stop-30",
+              "displayName": "Stop-30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Issues",
+              "displayName": "Issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ThreadID",
+              "displayName": "ThreadID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MessageID",
+              "displayName": "MessageID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Done_Researched",
+              "displayName": "Done_Researched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4256,
+        -192
+      ],
+      "id": "ce49f03a-6382-4238-a553-9fe926308cba",
+      "name": "Update row in sheet",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const shots = [];\nfor (const it of $input.all()) {\n  const r = it.json && Array.isArray(it.json.results) ? it.json.results[0] : null;\n  if (r && r.url && r.desktop && r.mobile) shots.push({ url: r.url, desktop: r.desktop, mobile: r.mobile });\n}\n// The vision prompt needs exactly 3 pages; pad with captured pages rather than\n// sending empty image URIs.\nconst results = shots.slice(0, 3);\nfor (let i = 0; results.length > 0 && results.length < 3; i++) results.push(shots[i % shots.length]);\nreturn [{ json: { results, shots_ok: shots.length > 0, shots_captured: shots.length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2416,
+        -432
+      ],
+      "id": "26d983ef-4ca2-4d40-bad7-53b6be43d5e4",
+      "name": "HTTP Request6"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://aiplatform.googleapis.com/v1/projects/{{ $(\"Edit Fields\").first().json.project_id }}/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=\tBearer {{ $(\"HTTP Request1\").first().json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        { \"text\": \"You are reviewing THREE website pages. For EACH page, compare DESKTOP and MOBILE screenshots of the same URL.\\nIMPORTANT ANTI-HALLUCINATION RULE: Automated screenshot capture sometimes fires BEFORE scroll-triggered fade-in animations (AOS/GSAP/WOW.js style reveals) have finished, showing solid black, solid gray, or blank rectangular boxes where logos/images/content actually exist on the real live site. Do NOT report solid-color or blank boxes as broken images, broken logos, missing assets, or similar defects - this is a known screenshot-capture artifact, not a real website bug. Only report an image/logo/asset as broken if you see a visible broken-image icon, alt text showing where an image should be, a clearly malformed or corrupted image, or a 404-style placeholder. If unsure whether something is a capture artifact vs a real defect, do NOT include it as an issue at all - omit it rather than guess.\\nThe same applies to ANIMATED NUMBER COUNTERS and STATISTICS: CountUp.js / odometer-style counters start at zero and only count up once scrolled into view, so a capture taken before the animation fires shows 0, 0%, or 0+ instead of the real figure. Do NOT report counters, statistics, or metrics displaying 0, 0%, or 0+ as a bug, broken counter, placeholder, or misconfiguration. Likewise do NOT report empty or zero-width progress bars, blank carousel or slider slides, un-loaded lazy images, or content that appears cut off at the bottom edge of the capture - all are capture artifacts, not defects. Only report a numeric or statistical element as defective if it renders obviously corrupted text such as NaN, undefined, or null.\\nReturn JSON ONLY.\\nOutput MUST be ONE JSON object with this shape:\\n{\\n  \\\"pages\\\": [\\n    {\\n      \\\"url\\\": \\\"...\\\",\\n      \\\"verdict\\\": \\\"...\\\",\\n      \\\"issues\\\": [],\\n      \\\"quick_wins\\\": [],\\n      \\\"copy_notes\\\": [],\\n      \\\"ux_notes\\\": []\\n    }\\n  ]\\n}\\nRules:\\n- Be blunt, specific, actionable.\\n- Each array should contain short bullet strings.\\n- pages array MUST contain exactly 3 objects in the same order as the URLs below.\\n\\nURL 1: {{ $json.results[0].url }}\\nURL 2: {{ $json.results[1].url }}\\nURL 3: {{ $json.results[2].url }}\" },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[0].desktop }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[0].mobile }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[1].desktop }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[1].mobile }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[2].desktop }}\" } },\n        { \"file_data\": { \"mime_type\": \"image/png\", \"file_uri\": \"{{ $json.results[2].mobile }}\" } }\n      ]\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2448,
+        -592
+      ],
+      "id": "e79c873c-cfb9-4697-8df9-f604dfabb6e1",
+      "name": "HTTP Request7",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Braav Labs Outreach Doctrine prompt builder\n// Shared verbatim by Code in JavaScript6 (sitemap-index path) and\n// Code in JavaScript8 (direct-sitemap path).\nconst rawText = $input.first().json?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';\nlet s = String(rawText).trim();\n\n// 1. Clean up JSON fences\ns = s.replace(/```json/gi, '').replace(/```/g, '').trim();\n\n// 2. Extract the JSON block from the vision output. A parse failure must not throw:\n// a thrown error leaves the row unmarked and retries it forever.\nlet pages = [];\nconst m = s.match(/\\{[\\s\\S]*\\}/);\nif (m) {\n  try {\n    const parsed = JSON.parse(m[0].trim());\n    pages = Array.isArray(parsed.pages) ? parsed.pages : [];\n  } catch (e) {\n    pages = [];\n  }\n}\n\nconst cleanPages = pages.map(p => ({\n  url: p.url ?? null,\n  verdict: p.verdict ?? null,\n  issues: Array.isArray(p.issues) ? p.issues.slice(0, 5) : [],\n  quick_wins: Array.isArray(p.quick_wins) ? p.quick_wins.slice(0, 5) : []\n}));\n\nconst pagesJson = JSON.stringify(cleanPages);\n\n// 3. BRAAV LABS OUTREACH DOCTRINE PROMPT\nconst prompt =\n  \"You are the senior website-friction analyst and cold outreach copywriter for Braav Labs, an AI automation company working with dental, medical, and wellness clinics.\\n\" +\n  \"You are given website page issues from a screenshot review. Those issues are the ONLY allowed website problems. Do not invent anything that is not in VISION_PAGES_JSON.\\n\\n\" +\n  \"GOAL: Pick ONE specific, observable friction on ONE page, tied to ONE next step (booking, inquiry, contact, consultation). The clinic owner should read it and think 'that's a fair point', then 'sure, send it over'.\\n\\n\" +\n  \"HARD RULES:\\n\" +\n  \"- Never claim guaranteed revenue, conversion increases, or a measurable loss.\\n\" +\n  \"- Never claim access to analytics, traffic, or visitor data. No numbers, percentages, rates, or statistics of any kind.\\n\" +\n  \"- Never use marketing jargon: bounce rate, conversion, decision fatigue, choice overload, optimize, user experience, UX, funnel, revenue, ROI.\\n\" +\n  \"- Never pick an issue that could be a screenshot-capture artifact: counters or statistics showing 0, blank or black boxes, missing logos or images, empty sliders or carousels, content cut off at the bottom.\\n\" +\n  \"- Never pick a generic comment ('could be optimized', 'several issues', 'needs better AI'). The owner must be able to picture exactly where it is on the page.\\n\" +\n  \"- If no issue in VISION_PAGES_JSON is observable AND tied to a next step, do NOT make one up and do NOT use web search to find a substitute. Return website_problem as null.\\n\\n\" +\n  \"COMPANY:\\n\" +\n  \"- Domain: \" + $('Code in JavaScript1').first().json.website_domain + \"\\n\" +\n  \"- Company Name: \" + $('Get row(s) in sheet').first().json['Company Name'] + \"\\n\\n\" +\n  \"VISION_PAGES_JSON:\\n\" +\n  pagesJson +\n  \"\\n\\n\" +\n  \"FIELDS (plain language a clinic owner would say out loud):\\n\" +\n  \"- page: short page name (Home, About, Contact, Booking, Services...).\\n\" +\n  \"- website_problem: ONE sentence, max 25 words, ONE concrete observable issue on that page. No stacked issues.\\n\" +\n  \"- friction_summary: ONE sentence, max 20 words, naming that same friction and the one outcome the page is for. Example: 'making the booking button easy to find on mobile, so new patients can request a visit'.\\n\" +\n  \"- recognizable_reason: ONE sentence, max 30 words: one patient action + one hesitation trigger.\\n\" +\n  \"- recognizable_reason_short: the same reason, simpler, max 18 words.\\n\" +\n  \"- consequence_mechanics: ONE sentence, max 35 words, the cause-and-effect chain (patient arrives, next step feels unclear, they may leave without taking it). A plausible mechanism, never a claimed loss.\\n\" +\n  \"- consequence_short: the same chain, more direct, max 22 words.\\n\" +\n  \"- preview_asset_exists: true if a small before/after preview of this one fix is realistic, else false.\\n\" +\n  \"- review_time: integer minutes to look over that preview, 2 to 5.\\n\" +\n  \"- micro_yes: a short permission question about sending the free preview, max 8 words, e.g. 'Want me to send it over?'. Never offer to fix anything, never ask for a call or meeting, never mention price.\\n\" +\n  \"- subject_label: 3 to 4 words, plain business voice, names the same page/topic as website_problem, e.g. 'Homepage booking button'. No hype, no urgency, no punctuation, no ALL CAPS, no company name.\\n\\n\" +\n  \"OUTPUT REQUIREMENTS (STRICT):\\n\" +\n  \"- Output MUST be valid JSON only. No markdown. No code fences. No extra keys.\\n\" +\n  \"- Return exactly these keys: page, website_problem, friction_summary, recognizable_reason, recognizable_reason_short, consequence_mechanics, consequence_short, preview_asset_exists, review_time, micro_yes, subject_label\\n\";\n\n// 4. Escape for JSON embedding\nconst escapedPrompt = prompt\n  .replace(/\\\\/g, '\\\\\\\\')\n  .replace(/\"/g, '\\\\\"')\n  .replace(/\\r?\\n/g, '\\\\\\\\n');\n\nreturn [{ json: { prompt: escapedPrompt } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2656,
+        -592
+      ],
+      "id": "420b46c4-22f2-4d1d-9838-c360f819f011",
+      "name": "Code in JavaScript8"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://aiplatform.googleapis.com/v1/projects/{{ $(\"Edit Fields\").first().json.project_id }}/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('HTTP Request1').first().json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"role\": \"user\",\n      \"parts\": [\n        { \"text\": \"{{ $json.prompt }}\" }\n      ]\n    }\n  ],\n  \"tools\": [\n    { \"googleSearch\": {} }\n  ],\n  \"generationConfig\": {\n    \"candidateCount\": 1,\n    \"temperature\": 0.2,\n    \"maxOutputTokens\": 2048,\n    \"thinkingConfig\": { \"thinkingLevel\": \"LOW\" }\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2864,
+        -592
+      ],
+      "id": "38934061-07f7-4abd-86c6-5adf385a40bc",
+      "name": "HTTP Request8",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node: Final Variable Extractor + doctrine quality gate\n// Shared verbatim by Code in JavaScript7 and Code in JavaScript9.\n//\n// Follow-ups need tightened variants of the same variables, so each cell holds\n// \"full || short\". The outreach templates read part [0] or [1]. Rows that fail the\n// gate get Issues = \"Research failed\" and are never emailed.\nconst raw =\n  $input.first().json?.candidates?.[0]?.content?.parts?.[0]?.text ??\n  $input.first().json?.text ??\n  '';\n\nlet text = String(raw).trim().replace(/```json/gi, '').replace(/```/g, '').trim();\n\nlet obj = {};\nconst match = text.match(/\\{[\\s\\S]*\\}/);\nif (match) {\n  try {\n    obj = JSON.parse(match[0].trim());\n  } catch (e) {\n    try { obj = JSON.parse(match[0].trim().replace(/,\\s*([}\\]])/g, '$1')); } catch (e2) { obj = {}; }\n  }\n}\n\nconst clean = v => (typeof v === 'string' ? v.replace(/\\s*\\|\\|\\s*/g, ' ').replace(/\\s+/g, ' ').trim() : '');\nconst pack = (full, short) => (full ? full + ' || ' + (short || full) : '');\n\nconst page = clean(obj.page);\nconst problem = clean(obj.website_problem);\nconst summary = clean(obj.friction_summary).replace(/[.!]+$/, '');\nconst reason = clean(obj.recognizable_reason);\nconst reasonShort = clean(obj.recognizable_reason_short);\nconst cons = clean(obj.consequence_mechanics);\nconst consShort = clean(obj.consequence_short);\nlet micro = clean(obj.micro_yes);\nlet subject = clean(obj.subject_label).replace(/[!?.:;\"]/g, '').trim();\nlet reviewTime = Number.isFinite(obj.review_time) ? Math.round(obj.review_time) : 3;\nif (reviewTime < 2 || reviewTime > 5) reviewTime = 3;\n\n// micro yes must stay a permission question about sending the preview\nif (!micro || !/send/i.test(micro) || /\\b(fix|call|meeting|chat|book a|schedule|price|cost)\\b/i.test(micro) || micro.split(' ').length > 10) {\n  micro = 'Want me to send it over?';\n}\nif (!micro.endsWith('?')) micro += '?';\n\nconst problems = [];\nif (!page) problems.push('page');\nif (!problem) problems.push('website_problem');\nif (!reason) problems.push('recognizable_reason');\nif (!cons) problems.push('consequence_mechanics');\nif (!summary) problems.push('friction_summary');\nconst words = subject.split(' ').filter(Boolean).length;\nif (words < 2 || words > 5) problems.push('subject_label');\n\nconst body = [problem, summary, reason, reasonShort, cons, consShort, subject].join(' ');\nconst banned = /\\d+\\s*%|\\b\\d+\\+|bounce|conversion|revenue|\\broi\\b|decision fatigue|choice overload|analytics|guarantee|funnel|optimi[sz]/i;\nif (banned.test(body)) problems.push('banned claim or metric');\nconst artifact = /counter|statistic|\\b0\\b|black|blank|placeholder|empty (media )?(box|player|space|area|section|profile|frame|slot)|broken (logo|image|photo|icon|video)|missing (a |an |the )?(logo|image|photo|headshot|picture|icon|video|thumbnail|portrait)|(no|without) (a |any )?(photo|headshot|picture|image|thumbnail|portrait)|carousel|slider|lazy|(not|fail\\w*( to)?) load|cut off/i;\nif (artifact.test(problem + ' ' + summary)) problems.push('possible screenshot artifact');\n\n// A blocked or erroring page render is our own request being refused, not a defect\n// the clinic can reproduce. Verified 2026-09-30: torontobeachdental.com returned a\n// 403 to our server while serving HTTP 200 to an independent fetch, and the run\n// wrote that block up as the clinic's website problem. Never ship it as a finding.\nconst blocked = /\\bforbidden\\b|\\baccess denied\\b|\\bcloudflare\\b|just a moment|checking your browser|attention required|site can'?t be reached|\\b(40\\d|5\\d{2})\\s*(error|forbidden|page|response|status)\\b|\\b(error|status)\\s*(code\\s*)?(40\\d|5\\d{2})\\b/i;\nconst unreachable = /(site|website|homepage|web ?page|domain)\\s+(is\\s+)?(currently\\s+)?(down|offline|unavailable|inaccessible|unreachable|not\\s+(available|accessible|loading|working|reachable|functioning))/i;\nif (blocked.test(body) || unreachable.test(body)) problems.push('blocked or error page, not reproducible');\n\nconst ok = problems.length === 0;\n\nreturn [{\n  json: {\n    page,\n    website_problem: pack(problem, summary),\n    recognizable_reason: pack(reason, reasonShort),\n    consequence_mechanics: pack(cons, consShort),\n    preview_asset_exists: typeof obj.preview_asset_exists === 'boolean' ? obj.preview_asset_exists : null,\n    review_time: reviewTime,\n    micro_yes: micro,\n    subject_label: subject,\n    research_ok: ok,\n    issues: ok ? '' : 'Research failed: ' + problems.join(', '),\n    sources: $input.first().json?.groundingMetadata?.webSearchQueries ?? []\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3072,
+        -592
+      ],
+      "id": "3d798799-2bbc-4efa-9fb3-5b0396de31fc",
+      "name": "Code in JavaScript9"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "LEADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 169877852,
+          "mode": "list",
+          "cachedResultName": "leads-hunter",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=169877852"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Get row(s) in sheet').first().json.row_number }}",
+            "page": "={{ $json.page }}",
+            "website_problem": "={{ $json.website_problem }}",
+            "recognisable_reason": "={{ $json.recognizable_reason }}",
+            "consequence_mechanics": "={{ $json.consequence_mechanics }}",
+            "preview_assets_exist": "={{ $json.preview_asset_exists }}",
+            "review_time": "={{ $json.review_time }}",
+            "micro_yes": "={{ $json.micro_yes }}",
+            "subject_line": "={{ $json.subject_label }}",
+            "Done_Researched": "true",
+            "Issues": "={{ $json.issues }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website URL",
+              "displayName": "Website URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domain",
+              "displayName": "Domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Brief Description",
+              "displayName": "Brief Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Organization",
+              "displayName": "Organization",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Headcount",
+              "displayName": "Headcount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State",
+              "displayName": "State",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Postal code",
+              "displayName": "Postal code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Street",
+              "displayName": "Street",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence score",
+              "displayName": "Confidence score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Number of sources",
+              "displayName": "Number of sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pattern",
+              "displayName": "Pattern",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First name",
+              "displayName": "First name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last name",
+              "displayName": "Last name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position raw",
+              "displayName": "Position raw",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Twitter handle",
+              "displayName": "Twitter handle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company type",
+              "displayName": "Company type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Industry",
+              "displayName": "Industry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "page",
+              "displayName": "page",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website_problem",
+              "displayName": "website_problem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recognisable_reason",
+              "displayName": "recognisable_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "consequence_mechanics",
+              "displayName": "consequence_mechanics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "preview_assets_exist",
+              "displayName": "preview_assets_exist",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "review_time",
+              "displayName": "review_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "micro_yes",
+              "displayName": "micro_yes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject_line",
+              "displayName": "subject_line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pitch",
+              "displayName": "pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 1",
+              "displayName": "Follow-up 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 2",
+              "displayName": "Follow-up 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 3",
+              "displayName": "Follow-up 3",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Stop-30",
+              "displayName": "Stop-30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Issues",
+              "displayName": "Issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ThreadID",
+              "displayName": "ThreadID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MessageID",
+              "displayName": "MessageID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Done_Researched",
+              "displayName": "Done_Researched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3248,
+        -592
+      ],
+      "id": "a9464aee-3d0d-434b-be7e-253d9e9dea84",
+      "name": "Update row in sheet1",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        288,
+        80
+      ],
+      "id": "2b6e72d5-5a37-4e9d-982e-d13b2f749ee3",
+      "name": "Wait"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "LEADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 169877852,
+          "mode": "list",
+          "cachedResultName": "leads-hunter",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=169877852"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Get row(s) in sheet').first().json.row_number }}",
+            "Done_Researched": "true",
+            "Done": "true",
+            "Issues": "No website",
+            "Checked Reply": "true"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website URL",
+              "displayName": "Website URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domain",
+              "displayName": "Domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Brief Description",
+              "displayName": "Brief Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Organization",
+              "displayName": "Organization",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Headcount",
+              "displayName": "Headcount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State",
+              "displayName": "State",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Postal code",
+              "displayName": "Postal code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Street",
+              "displayName": "Street",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence score",
+              "displayName": "Confidence score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Number of sources",
+              "displayName": "Number of sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pattern",
+              "displayName": "Pattern",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First name",
+              "displayName": "First name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last name",
+              "displayName": "Last name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position raw",
+              "displayName": "Position raw",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Twitter handle",
+              "displayName": "Twitter handle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company type",
+              "displayName": "Company type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Industry",
+              "displayName": "Industry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "page",
+              "displayName": "page",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website_problem",
+              "displayName": "website_problem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recognisable_reason",
+              "displayName": "recognisable_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "consequence_mechanics",
+              "displayName": "consequence_mechanics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "preview_assets_exist",
+              "displayName": "preview_assets_exist",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "review_time",
+              "displayName": "review_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "micro_yes",
+              "displayName": "micro_yes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject_line",
+              "displayName": "subject_line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pitch",
+              "displayName": "pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 1",
+              "displayName": "Follow-up 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 2",
+              "displayName": "Follow-up 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 3",
+              "displayName": "Follow-up 3",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Stop-30",
+              "displayName": "Stop-30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Issues",
+              "displayName": "Issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ThreadID",
+              "displayName": "ThreadID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MessageID",
+              "displayName": "MessageID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Done_Researched",
+              "displayName": "Done_Researched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        288,
+        304
+      ],
+      "id": "3f90ac79-ab67-4eb8-8341-bb87ace76011",
+      "name": "Update row in sheet2",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        -144
+      ],
+      "id": "9f18bbf2-dcae-4161-b7da-f0e8c7568da7",
+      "name": "Wait1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "LEADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 169877852,
+          "mode": "list",
+          "cachedResultName": "leads-hunter",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=169877852"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Get row(s) in sheet').first().json.row_number }}",
+            "Done_Researched": "true",
+            "Done": "true",
+            "Issues": "Bad sitemap",
+            "Checked Reply": "true"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website URL",
+              "displayName": "Website URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domain",
+              "displayName": "Domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Brief Description",
+              "displayName": "Brief Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Organization",
+              "displayName": "Organization",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Headcount",
+              "displayName": "Headcount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State",
+              "displayName": "State",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Postal code",
+              "displayName": "Postal code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Street",
+              "displayName": "Street",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence score",
+              "displayName": "Confidence score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Number of sources",
+              "displayName": "Number of sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pattern",
+              "displayName": "Pattern",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First name",
+              "displayName": "First name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last name",
+              "displayName": "Last name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position raw",
+              "displayName": "Position raw",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Twitter handle",
+              "displayName": "Twitter handle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company type",
+              "displayName": "Company type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Industry",
+              "displayName": "Industry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "page",
+              "displayName": "page",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website_problem",
+              "displayName": "website_problem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recognisable_reason",
+              "displayName": "recognisable_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "consequence_mechanics",
+              "displayName": "consequence_mechanics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "preview_assets_exist",
+              "displayName": "preview_assets_exist",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "review_time",
+              "displayName": "review_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "micro_yes",
+              "displayName": "micro_yes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject_line",
+              "displayName": "subject_line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pitch",
+              "displayName": "pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 1",
+              "displayName": "Follow-up 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 2",
+              "displayName": "Follow-up 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 3",
+              "displayName": "Follow-up 3",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Stop-30",
+              "displayName": "Stop-30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Issues",
+              "displayName": "Issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ThreadID",
+              "displayName": "ThreadID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MessageID",
+              "displayName": "MessageID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Done_Researched",
+              "displayName": "Done_Researched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1104,
+        -144
+      ],
+      "id": "f34bd4d8-f5eb-4acf-931f-dfa5ea7734dc",
+      "name": "Update row in sheet3",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2256,
+        -400
+      ],
+      "id": "d40a0993-57ae-4213-83a6-7ebb4f69c80c",
+      "name": "Wait2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "LEADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 169877852,
+          "mode": "list",
+          "cachedResultName": "leads-hunter",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=169877852"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Get row(s) in sheet').first().json.row_number }}",
+            "Done_Researched": "true",
+            "Done": "true",
+            "Issues": "Nothing to research",
+            "Checked Reply": "true"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website URL",
+              "displayName": "Website URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domain",
+              "displayName": "Domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Brief Description",
+              "displayName": "Brief Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Organization",
+              "displayName": "Organization",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Headcount",
+              "displayName": "Headcount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State",
+              "displayName": "State",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Postal code",
+              "displayName": "Postal code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Street",
+              "displayName": "Street",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence score",
+              "displayName": "Confidence score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Number of sources",
+              "displayName": "Number of sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pattern",
+              "displayName": "Pattern",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First name",
+              "displayName": "First name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last name",
+              "displayName": "Last name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position raw",
+              "displayName": "Position raw",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Twitter handle",
+              "displayName": "Twitter handle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company type",
+              "displayName": "Company type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Industry",
+              "displayName": "Industry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "page",
+              "displayName": "page",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website_problem",
+              "displayName": "website_problem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recognisable_reason",
+              "displayName": "recognisable_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "consequence_mechanics",
+              "displayName": "consequence_mechanics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "preview_assets_exist",
+              "displayName": "preview_assets_exist",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "review_time",
+              "displayName": "review_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "micro_yes",
+              "displayName": "micro_yes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject_line",
+              "displayName": "subject_line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pitch",
+              "displayName": "pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 1",
+              "displayName": "Follow-up 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 2",
+              "displayName": "Follow-up 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 3",
+              "displayName": "Follow-up 3",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Stop-30",
+              "displayName": "Stop-30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Issues",
+              "displayName": "Issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ThreadID",
+              "displayName": "ThreadID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MessageID",
+              "displayName": "MessageID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Done_Researched",
+              "displayName": "Done_Researched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2464,
+        -400
+      ],
+      "id": "8996090f-3bdf-4dc5-8a9f-ffa2567bc73f",
+      "name": "Update row in sheet4",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6,
+              "triggerAtMinute": 15
+            }
+          ]
+        }
+      },
+      "id": "sched-email-automation-01",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -592,
+        160
+      ]
+    },
+    {
+      "id": "ea11f1a2-2222-3333-4444-555566667777",
+      "name": "Get row(s) in sheet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -156,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst pending = items.filter(i => {\n  const d = i.json.Done_Researched;\n  return d === undefined || d === null || String(d).trim() === \"\";\n});\nreturn pending.length ? [pending[0]] : [];"
+      }
+    },
+    {
+      "id": "ea-sitemap-fallback-0001",
+      "name": "HTTP Request FALLBACK",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        432,
+        -152
+      ],
+      "parameters": {
+        "url": "={{ $('Code in JavaScript').first().json.website_clean }}sitemap_index.xml",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "ea-sitemap-pick-0001",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        -272
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function ok(b) {\n  const t = String(b || '').slice(0, 5000).toLowerCase();\n  if (!t) return false;\n  if (t.includes('<!doctype html') || t.includes('<html') || t.includes('<head') || t.includes('<body')) return false;\n  return t.includes('<?xml') && (t.includes('<sitemapindex') || t.includes('<urlset') || t.includes('<url><loc>'));\n}\nfunction grab(name) {\n  try {\n    const j = $(name).first().json;\n    return (j && typeof j.data === 'string') ? j.data : '';\n  } catch (e) {\n    return '';\n  }\n}\nconst primary = grab('HTTP Request PRIMARY');\nconst fallback = grab('HTTP Request FALLBACK');\n// Some hosts' WAFs answer the n8n server IP with 403 while serving the same\n// sitemap to a browser, so a relay is tried before the row is written off.\nconst proxy = grab('Sitemap Proxy');\n\nif (ok(primary)) return [{ json: { data: primary, sitemap_source: 'primary' } }];\nif (ok(fallback)) return [{ json: { data: fallback, sitemap_source: 'fallback' } }];\nif (ok(proxy)) return [{ json: { data: proxy, sitemap_source: 'proxy' } }];\n\n// Nothing parsed. On these leads that is a WAF answering this server's IP - a\n// Cloudflare interstitial or a flat 403 on /sitemap.xml - not a site without\n// pages: the headless browser renders the same domains fine. Marking the row\n// \"Bad sitemap\" discarded a reachable lead, so synthesise a one-entry urlset\n// for the homepage and let the normal screenshot + research path run on it.\nlet home = '';\ntry { home = String($('Code in JavaScript').first().json.website_clean || '').trim(); } catch (e) { home = ''; }\n\nif (!/^https?:\\/\\/[^ ]+$/i.test(home)) {\n  // no usable homepage either - keep the old write-off behaviour\n  return [{ json: { data: primary, sitemap_source: 'none' } }];\n}\n\nconst esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst synthetic =\n  '<?xml version=\"1.0\" encoding=\"UTF-8\"?>\\n' +\n  '<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\\n' +\n  '  <url><loc>' + esc(home) + '</loc></url>\\n' +\n  '</urlset>';\n\nreturn [{ json: { data: synthetic, sitemap_source: 'synthetic-home' } }];\n"
+      }
+    },
+    {
+      "id": "ea-shot-plan-0001",
+      "name": "HTTP Request2 PLAN",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        -32
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const src = $input.first().json;\nlet home = '';\ntry { home = String($('Code in JavaScript').first().json.website_clean || ''); } catch (e) { home = ''; }\nconst valid = u => typeof u === 'string' && /^https?:[/][/][^ ]+$/i.test(u.trim());\nconst picked = [];\nconst add = u => { if (valid(u) && picked.indexOf(u.trim()) < 0) picked.push(u.trim()); };\nadd(valid(src.url_1) ? src.url_1 : home);\nadd(src.url_2);\nadd(src.url_3);\nadd(home);\nreturn picked.slice(0, 3).map((url, slot) => ({ json: { url, slot } }));"
+      }
+    },
+    {
+      "id": "ea-shot-capture-0001",
+      "name": "HTTP Request2 CAPTURE",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3088,
+        -32
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://render.example.com:3333/screenshot",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ urls: [$json.url] }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "ea-shot-ok-0001",
+      "name": "HTTP Request2 OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3408,
+        -32
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ea-shot-ok-cond-0001",
+              "leftValue": "={{ $json.shots_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ea-shot-plan-0002",
+      "name": "HTTP Request6 PLAN",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2096,
+        -432
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const src = $input.first().json;\nlet home = '';\ntry { home = String($('Code in JavaScript').first().json.website_clean || ''); } catch (e) { home = ''; }\nconst valid = u => typeof u === 'string' && /^https?:[/][/][^ ]+$/i.test(u.trim());\nconst picked = [];\nconst add = u => { if (valid(u) && picked.indexOf(u.trim()) < 0) picked.push(u.trim()); };\nadd(valid(src.url_1) ? src.url_1 : home);\nadd(src.url_2);\nadd(src.url_3);\nadd(home);\nreturn picked.slice(0, 3).map((url, slot) => ({ json: { url, slot } }));"
+      }
+    },
+    {
+      "id": "ea-shot-capture-0002",
+      "name": "HTTP Request6 CAPTURE",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2256,
+        -432
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://render.example.com:3333/screenshot",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ urls: [$json.url] }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "ea-shot-ok-0002",
+      "name": "HTTP Request6 OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2576,
+        -432
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ea-shot-ok-cond-0002",
+              "leftValue": "={{ $json.shots_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "LEADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 169877852,
+          "mode": "list",
+          "cachedResultName": "leads-hunter",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=169877852"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Get row(s) in sheet').first().json.row_number }}",
+            "Done_Researched": "true",
+            "Done": "true",
+            "Issues": "Screenshot failed",
+            "Checked Reply": "true"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website URL",
+              "displayName": "Website URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domain",
+              "displayName": "Domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Brief Description",
+              "displayName": "Brief Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Organization",
+              "displayName": "Organization",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Headcount",
+              "displayName": "Headcount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State",
+              "displayName": "State",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Postal code",
+              "displayName": "Postal code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Street",
+              "displayName": "Street",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence score",
+              "displayName": "Confidence score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Number of sources",
+              "displayName": "Number of sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pattern",
+              "displayName": "Pattern",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First name",
+              "displayName": "First name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last name",
+              "displayName": "Last name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position raw",
+              "displayName": "Position raw",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Twitter handle",
+              "displayName": "Twitter handle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company type",
+              "displayName": "Company type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Industry",
+              "displayName": "Industry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "page",
+              "displayName": "page",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website_problem",
+              "displayName": "website_problem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recognisable_reason",
+              "displayName": "recognisable_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "consequence_mechanics",
+              "displayName": "consequence_mechanics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "preview_assets_exist",
+              "displayName": "preview_assets_exist",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "review_time",
+              "displayName": "review_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "micro_yes",
+              "displayName": "micro_yes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject_line",
+              "displayName": "subject_line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pitch",
+              "displayName": "pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 1",
+              "displayName": "Follow-up 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 2",
+              "displayName": "Follow-up 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 3",
+              "displayName": "Follow-up 3",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Stop-30",
+              "displayName": "Stop-30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Issues",
+              "displayName": "Issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ThreadID",
+              "displayName": "ThreadID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MessageID",
+              "displayName": "MessageID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Done_Researched",
+              "displayName": "Done_Researched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1104,
+        56
+      ],
+      "id": "ea-shot-fail-0001",
+      "name": "Update row in sheet Screenshot failed",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6,
+              "triggerAtMinute": 45
+            }
+          ]
+        }
+      },
+      "id": "ea-sweep-schedule",
+      "name": "Sweep Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -592,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "LEADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 169877852,
+          "mode": "list",
+          "cachedResultName": "leads-hunter",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=169877852"
+        },
+        "options": {}
+      },
+      "id": "ea-sweep-rows",
+      "name": "Sweep Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -372,
+        900
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Node \"Sweep Pick\" (Email automation) - v3.\n// v1 retried a stuck row up to 3 times then silently ignored it forever. The row kept its\n// failure text in Issues, so the watchdog went on counting it as stuck and would have emailed\n// the same \"failed-row count frozen\" alert once every 24h for the rest of time.\n// v2 gives up explicitly: after the last retry the row is stamped \"Permanent: <reason>\", which\n// both this picker and the watchdog's stuck filter ignore. One visible mark in the sheet,\n// no recurring alert, no human intervention.\n// v3 adds RESET_TOKEN. The retry counters live in workflow static data, so rows that burned\n// their three tries against a bug are unreachable even after that bug is fixed. Changing the\n// token clears the counters exactly once, giving every stuck row a fresh set of tries under\n// the repaired pipeline. Bump it whenever a fix changes what a retry can achieve.\nconst RESET_TOKEN = '2026-09-29-synthetic-sitemap-fallback';\nconst MAX_TRIES = 3;\nconst PER_SWEEP = 4;\nconst RETRYABLE = /bad sitemap|screenshot failed|research failed|timeout|rate limit/i;\nconst TERMINAL = /replied|unsubscrib|bounce|stop|no website/i;\nconst PERMANENT = /^\\s*permanent/i;\n\nconst store = $getWorkflowStaticData('global');\nif (store.sweepResetToken !== RESET_TOKEN) {\n  store.sweep = {};\n  store.gaveUp = {};\n  store.sweepResetToken = RESET_TOKEN;\n}\nif (!store.sweep || typeof store.sweep !== 'object') store.sweep = {};\nif (!store.gaveUp || typeof store.gaveUp !== 'object') store.gaveUp = {};\nconst tries = store.sweep;\nconst gaveUp = store.gaveUp;\n\nconst blank = v => v === undefined || v === null || String(v).trim() === '';\nconst rows = $input.all().map(i => i.json);\n\nconst stuck = rows.filter(r => {\n  if (blank(r['Email Address'])) return false;\n  if (!blank(r.ThreadID)) return false;\n  const issues = String(r.Issues || '');\n  if (PERMANENT.test(issues)) return false;        // already given up on\n  if (!blank(issues) && TERMINAL.test(issues)) return false;\n  const failed = !blank(issues) && RETRYABLE.test(issues);\n  const oldFormat = blank(issues) && !blank(r.Done_Researched) && blank(r.Done)\n    && !blank(r.website_problem) && !String(r.website_problem).includes(' || ');\n  return failed || oldFormat;\n});\n\nconst out = [];\nconst retried = [];\nfor (const r of stuck) {\n  const key = String(r.row_number);\n  const was = String(r.Issues || 'old format');\n  const n = Number(tries[key] || 0);\n\n  if (n >= MAX_TRIES) {\n    // out of retries - stamp it once so nothing counts it as stuck again\n    if (!gaveUp[key]) {\n      gaveUp[key] = true;\n      out.push({ json: {\n        row_number: r.row_number,\n        company: r['Company Name'] || '',\n        mode: 'giveup',\n        was: was,\n        attempt: n,\n        issues: 'Permanent: ' + was,\n        dr: r.Done_Researched === undefined ? '' : r.Done_Researched,\n        done: r.Done === undefined ? '' : r.Done,\n        checked: r['Checked Reply'] === undefined ? '' : r['Checked Reply'],\n      } });\n    }\n    continue;\n  }\n\n  if (retried.length >= PER_SWEEP) continue;\n  tries[key] = n + 1;\n  retried.push(key);\n  out.push({ json: {\n    row_number: r.row_number,\n    company: r['Company Name'] || '',\n    mode: 'retry',\n    was: was,\n    attempt: n + 1,\n    issues: '', dr: '', done: '', checked: '',\n  } });\n}\n\nreturn out;\n"
+      },
+      "id": "ea-sweep-pick",
+      "name": "Sweep Pick",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -152,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "LEADS ",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 169877852,
+          "mode": "list",
+          "cachedResultName": "leads-hunter",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=169877852"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.row_number }}",
+            "Done_Researched": "={{ $json.dr }}",
+            "Done": "={{ $json.done }}",
+            "Issues": "={{ $json.issues }}",
+            "Checked Reply": "={{ $json.checked }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website URL",
+              "displayName": "Website URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Domain",
+              "displayName": "Domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email Address",
+              "displayName": "Email Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number",
+              "displayName": "Phone Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Brief Description",
+              "displayName": "Brief Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Organization",
+              "displayName": "Organization",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Headcount",
+              "displayName": "Headcount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State",
+              "displayName": "State",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Postal code",
+              "displayName": "Postal code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Street",
+              "displayName": "Street",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence score",
+              "displayName": "Confidence score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Number of sources",
+              "displayName": "Number of sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pattern",
+              "displayName": "Pattern",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First name",
+              "displayName": "First name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last name",
+              "displayName": "Last name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position raw",
+              "displayName": "Position raw",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Twitter handle",
+              "displayName": "Twitter handle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company type",
+              "displayName": "Company type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Industry",
+              "displayName": "Industry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "page",
+              "displayName": "page",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website_problem",
+              "displayName": "website_problem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recognisable_reason",
+              "displayName": "recognisable_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "consequence_mechanics",
+              "displayName": "consequence_mechanics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "preview_assets_exist",
+              "displayName": "preview_assets_exist",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "review_time",
+              "displayName": "review_time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "micro_yes",
+              "displayName": "micro_yes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subject_line",
+              "displayName": "subject_line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pitch",
+              "displayName": "pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 1",
+              "displayName": "Follow-up 1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 2",
+              "displayName": "Follow-up 2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Follow-up 3",
+              "displayName": "Follow-up 3",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Stop-30",
+              "displayName": "Stop-30",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Issues",
+              "displayName": "Issues",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ThreadID",
+              "displayName": "ThreadID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MessageID",
+              "displayName": "MessageID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Done_Researched",
+              "displayName": "Done_Researched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "id": "ea-sweep-clear",
+      "name": "Sweep Clear",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        68,
+        900
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "url": "=https://api.allorigins.win/raw?url={{ encodeURIComponent($('Code in JavaScript').first().json.website_clean + 'sitemap.xml') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 25000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        432,
+        -460
+      ],
+      "name": "Sitemap Proxy",
+      "retryOnFail": true,
+      "onError": "continueRegularOutput",
+      "id": "b7f1c2d4-5a6e-4f80-9a1b-2c3d4e5f6a70"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet RAW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request PRIMARY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "JWT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JWT": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Sitemap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request6 PLAN",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sitemap": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sitemap1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Sitemap1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript5": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2 PLAN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2 OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request4": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript6": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request5": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript7": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request6": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request6 OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request7": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript8": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request8": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript9": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet RAW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet RAW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet2": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet RAW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet3": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet RAW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet RAW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet RAW": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet4": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet RAW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request PRIMARY": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request FALLBACK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request FALLBACK": {
+      "main": [
+        [
+          {
+            "node": "Sitemap Proxy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2 PLAN": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2 CAPTURE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2 CAPTURE": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2 OK?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update row in sheet Screenshot failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request6 PLAN": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request6 CAPTURE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request6 CAPTURE": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request6 OK?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request7",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update row in sheet Screenshot failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet Screenshot failed": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet RAW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sweep Schedule": {
+      "main": [
+        [
+          {
+            "node": "Sweep Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sweep Rows": {
+      "main": [
+        [
+          {
+            "node": "Sweep Pick",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sweep Pick": {
+      "main": [
+        [
+          {
+            "node": "Sweep Clear",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sitemap Proxy": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

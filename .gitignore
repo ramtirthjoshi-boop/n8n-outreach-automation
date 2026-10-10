@@ -1,0 +1,19 @@
+# Never commit secrets — n8n credential values, API keys, tokens
+env.sh
+.env
+.env.*
+*.key
+*.pem
+credentials*.json
+
+# Raw API dumps and scratch patches (may contain sheet data)
+*_cur.json
+*_put.json
+scratch/
+tmp/
+
+# OS / editor noise
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
